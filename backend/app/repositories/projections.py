@@ -6,31 +6,44 @@ from typing import Any
 import sqlite3
 
 
-def replace_stream_projection(
+def upsert_projection_row(
     conn: sqlite3.Connection,
     *,
     stream_id: int,
-    rows: list[dict[str, Any]],
+    row: dict[str, Any],
     updated_at: str,
 ) -> None:
-    conn.execute("DELETE FROM projection_rows WHERE stream_id=?", (stream_id,))
-    for row in rows:
-        conn.execute(
-            """
-            INSERT INTO projection_rows(
-                stream_id, entity_key, payload_json, applied_seq, applied_event_id, deleted, updated_at
-            ) VALUES (?,?,?,?,?,?,?)
-            """,
-            (
-                stream_id,
-                row["entity_key"],
-                json.dumps(row.get("payload"), ensure_ascii=False) if row.get("payload") is not None else None,
-                row["applied_seq"],
-                row["applied_event_id"],
-                1 if row.get("deleted") else 0,
-                updated_at,
-            ),
-        )
+    """Upsert one entity's projection row.
+
+    The WHERE guard makes a lower-seq write a no-op even if a caller slips
+    past the engine: an already-applied higher seq can never be overwritten
+    by a late low-seq event at the storage layer either.
+    """
+    conn.execute(
+        """
+        INSERT INTO projection_rows(
+            stream_id, entity_key, payload_json, applied_seq, applied_event_id, deleted, updated_at
+        ) VALUES (?,?,?,?,?,?,?)
+        ON CONFLICT(stream_id, entity_key) DO UPDATE SET
+            payload_json=excluded.payload_json,
+            applied_seq=excluded.applied_seq,
+            applied_event_id=excluded.applied_event_id,
+            deleted=excluded.deleted,
+            updated_at=excluded.updated_at
+        WHERE excluded.applied_seq > projection_rows.applied_seq
+        """,
+        (
+            stream_id,
+            row["entity_key"],
+            json.dumps(row.get("payload"), ensure_ascii=False)
+            if row.get("payload") is not None
+            else None,
+            row["applied_seq"],
+            row["applied_event_id"],
+            1 if row.get("deleted") else 0,
+            updated_at,
+        ),
+    )
 
 
 def list_projections(
@@ -57,26 +70,9 @@ def list_projections(
     return out
 
 
-def list_known_event_ids(conn: sqlite3.Connection, stream_id: int) -> set[str]:
-    rows = conn.execute(
-        "SELECT DISTINCT event_id FROM applied_events WHERE stream_id=?",
-        (stream_id,),
-    ).fetchall()
-    return {r["event_id"] for r in rows}
-
-
-def list_ooo_buffer(conn: sqlite3.Connection, stream_id: int | None = None) -> list[dict[str, Any]]:
-    if stream_id is None:
-        rows = conn.execute("SELECT * FROM ooo_buffer ORDER BY id DESC").fetchall()
-    else:
-        rows = conn.execute(
-            "SELECT * FROM ooo_buffer WHERE stream_id=? ORDER BY id DESC",
-            (stream_id,),
-        ).fetchall()
-    out: list[dict[str, Any]] = []
-    for r in rows:
-        d = dict(r)
-        d["payload"] = json.loads(d["payload_json"]) if d["payload_json"] else None
-        d.pop("payload_json", None)
-        out.append(d)
-    return out
+def count_projections(conn: sqlite3.Connection, stream_id: int, deleted: bool) -> int:
+    r = conn.execute(
+        "SELECT COUNT(*) c FROM projection_rows WHERE stream_id=? AND deleted=?",
+        (stream_id, 1 if deleted else 0),
+    ).fetchone()
+    return int(r["c"])

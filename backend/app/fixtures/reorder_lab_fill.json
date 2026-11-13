@@ -1,0 +1,18 @@
+[
+  {
+    "event_id": "lab-f1",
+    "entity_key": "L-B",
+    "op": "upsert",
+    "seq": 2,
+    "event_time": "2026-04-01T00:04:00Z",
+    "payload": {"label": "补齐缺口-2", "qty": 102}
+  },
+  {
+    "event_id": "lab-f2",
+    "entity_key": "L-C",
+    "op": "upsert",
+    "seq": 3,
+    "event_time": "2026-04-01T00:18:00Z",
+    "payload": {"label": "独立实体-3", "qty": 3}
+  }
+]

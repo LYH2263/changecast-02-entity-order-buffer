@@ -29,3 +29,21 @@ def set_watermark(conn: sqlite3.Connection, stream_id: int, watermark_seq: int) 
         "UPDATE project_streams SET watermark_seq=? WHERE id=?",
         (watermark_seq, stream_id),
     )
+
+
+def update_config(
+    conn: sqlite3.Connection,
+    stream_id: int,
+    *,
+    buffer_max_events: int,
+    buffer_max_wait_seconds: int,
+    start_seq: int,
+) -> None:
+    conn.execute(
+        """
+        UPDATE project_streams
+        SET buffer_max_events=?, buffer_max_wait_seconds=?, start_seq=?
+        WHERE id=?
+        """,
+        (buffer_max_events, buffer_max_wait_seconds, start_seq, stream_id),
+    )

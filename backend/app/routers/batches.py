@@ -9,6 +9,7 @@ router = APIRouter(tags=["batches"])
 class RunBody(BaseModel):
     stream_id: int
     note: str | None = None
+    fixture: str | None = None
 
 
 @router.get("/batches")
@@ -19,6 +20,6 @@ def list_batches(limit: int = 50):
 @router.post("/project")
 def run_project(body: RunBody):
     try:
-        return svc.run_project(body.stream_id, body.note)
+        return svc.run_project(body.stream_id, body.note, body.fixture)
     except ValueError as e:
         raise HTTPException(400, str(e)) from e
